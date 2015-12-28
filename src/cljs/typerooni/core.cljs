@@ -133,7 +133,7 @@
           is-backspace (remove-most-recent-timestamp state)
           is-space (save-word-and-clear-input input state)
           :else (save-most-recent-timestamp input state))
-        (js/console.log state)
+        (js/console.log (str (:words-typed @state)))
         (recur (alts! [keydown-input keypress-input]))))))
 
 (defn event->map [e]
@@ -165,7 +165,7 @@
 
 (defn typing-run-view [state]
   [:div {:style {:width "800px" :height "9em" :overflow "hidden"}}
-    (word-view (:target-words @state))])
+    (doall (word-view (:target-words @state)))])
 
 (defn typing-run-input []
   [:form
