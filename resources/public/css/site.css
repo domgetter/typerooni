@@ -34,12 +34,22 @@ a:hover {
 }
 
 .target-word {
-  padding-right: 0.55em;
+  padding-right: 0.3em;
+  padding-left: 0.3em;
   display: inline-block;
   line-height: 1.45em;
   font-size: 2em;
 }
 
 span.current {
-  background-color: #9ED;
+  background-color: #246781;
+  color: white;
+}
+
+span.correct {
+  color: green;
+}
+
+span.incorrect {
+  color: #C52;
 }
