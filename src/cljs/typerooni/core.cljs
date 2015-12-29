@@ -71,6 +71,13 @@
                       :current-word 0
                       :offset-height 0}))
 
+#_(defn reset-state! []
+  (reset! state {:target-words (shuffle words)
+                      :words-typed []
+                      :current-word-timestamps []
+                      :current-word 0
+                      :offset-height 0}))
+
 (def this-run-words (shuffle words))
 
 (defn get-n-words [n]
@@ -106,9 +113,10 @@
 
 (defn save-timestamps [input state]
   (let [times (conj (:current-word-timestamps @state) (:timeStamp input))
+        time-diffs (into [] (map #(- %2 %1) times (rest times)))
         word (.-value (:target input))
         correct (is-correct word (.-innerText (current-word-html state)))
-        new-word {:times times :word word :correct correct}]
+        new-word {:times time-diffs :word word :correct correct}]
     (swap! state update-in
        [:words-typed] conj new-word)))
 
@@ -200,7 +208,6 @@
              :onKeyPress (fn [e] (keypress-func e state))}]])
 
 (defn typing-run-page []
-  (consume-input)
   [:div {:font-size "2em"}
     [:span "This is a single run!"]
     (typing-run-view state)
@@ -230,4 +237,5 @@
 (defn init! []
   (accountant/configure-navigation!)
   (accountant/dispatch-current!)
-  (mount-root))
+  (mount-root)
+  (consume-input))
