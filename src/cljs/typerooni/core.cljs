@@ -94,6 +94,8 @@
 (defn current-word-html [state]
   (js/document.querySelector (str "[data-word-id=\"" (:current-word @state) "\"]")))
 
+
+
 (defn is-correct [input word]
   (= (apply str (butlast input)) word))
 
@@ -101,7 +103,7 @@
   (let [times (conj (:current-word-timestamps @state) (:timeStamp input))
         time-diffs (into [] (map #(- %2 %1) times (rest times)))
         word (.-value (:target input))
-        correct (is-correct word (.-innerText (current-word-html state)))
+        correct (is-correct word (:word (nth (:target-words @state) (:current-word @state))))
         new-word {:times time-diffs :word word :correct correct}
         correctness (if correct "correct" "incorrect")
         new-target (assoc (nth (:target-words @state) (:current-word @state)) :correctness correctness)]
@@ -179,9 +181,11 @@
 
 (defn keydown-func [e state]
   (let [key-pressed {:which (.-which e)}
-        is-backspace (= (:which key-pressed) 8)]
+        is-backspace (= (:which key-pressed) 8)
+        is-enter (= (:which key-pressed) 13)]
     (if is-backspace
-      (go (>! keydown-input [key-pressed state])))))
+      (go (>! keydown-input [key-pressed state])))
+    (if is-enter (.preventDefault e))))
 
 (defn indexed-span [i word]
   ^{:key i}
@@ -213,9 +217,11 @@
 
 (defn typing-run-input []
   [:form
-    [:input {:type "text"
+    [:input {:id "typing-test-input"
+             :type "text"
              :onKeyDown (fn [e] (keydown-func e state))
              :onKeyPress (fn [e] (keypress-func e state))
+             :autoFocus "autoFocus"
              :style {
                :width "100%"
                :height "30px"
@@ -259,7 +265,8 @@
   (session/put! :current-page #'about-page))
 
 (secretary/defroute "/typing-run" []
-  (session/put! :current-page #'typing-run-page))
+  (session/put! :current-page #'typing-run-page)
+  #_(js/console.log (str (js/document.getElementById "typing-test-input"))))
 
 ;; -------------------------
 ;; Initialize app
