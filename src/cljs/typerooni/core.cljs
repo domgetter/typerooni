@@ -65,7 +65,7 @@
 
 (def keydown-input (chan))
 (def keypress-input (chan))
-(defonce state (atom {:target-words (shuffle words)
+(def state (atom {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
                       :words-typed []
                       :current-word-timestamps []
                       :current-word 0
@@ -102,9 +102,13 @@
         time-diffs (into [] (map #(- %2 %1) times (rest times)))
         word (.-value (:target input))
         correct (is-correct word (.-innerText (current-word-html state)))
-        new-word {:times time-diffs :word word :correct correct}]
+        new-word {:times time-diffs :word word :correct correct}
+        correctness (if correct "correct" "incorrect")
+        new-target (assoc (nth (:target-words @state) (:current-word @state)) :correctness correctness)]
     (swap! state update-in
-       [:words-typed] conj new-word)))
+      [:words-typed] conj new-word)
+    (swap! state update-in
+      [:target-words] assoc (:current-word @state) new-target)))
 
 (defn current-word-height [state]
   (.-height (.getBoundingClientRect (current-word-html state))))
@@ -179,14 +183,14 @@
     (if is-backspace
       (go (>! keydown-input [key-pressed state])))))
 
-(defn indexed-span [i w]
+(defn indexed-span [i word]
   ^{:key i}
   #_(js/console.log i)
   [:span {:data-word-id i :class (str
                                    "target-word" \space
                                    (if (= i (:current-word @state)) "current") \space
-                                   #_#_i \space
-                                   (if (>= i (:current-word @state)) "" (if (:correct ((:words-typed @state) i)) "correct" "incorrect")))} w])
+                                   #_(if (>= i (:current-word @state)) "" (if (:correct ((:words-typed @state) i)) "correct" "incorrect"))
+                                   (:correctness ((:target-words @state) i)))} (:word word)])
 
 (defn word-view [target]
   (map-indexed indexed-span target))
@@ -219,14 +223,15 @@
                :padding-left "4px"
                :border-radius "4px"}}]])
 
-(defn word->wpm [word]
+(defn word->wpm [i word]
   (let [count (count (:times word))
         sum (reduce + (:times word))]
-    [(:word word) (js/Math.round (/ 12000 (/ sum count)))]))
+    [(:word word) (js/Math.round (/ 12000 (/ sum count))) i]))
 
 (defn analysis [state]
-  [:table
-    (for [word (take 10 (reverse (map word->wpm (:words-typed @state))))] [:tr [:td (word 0)] [:td (word 1)]])])
+  [:table [:tbody
+    (for [[word wpm key] (take 10 (reverse (map-indexed word->wpm (:words-typed @state))))]
+      ^{:key key} [:tr [:td word] [:td wpm]])]])
 
 (defn typing-run-page []
   [:div
