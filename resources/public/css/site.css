@@ -44,6 +44,7 @@ a:hover {
 span.current {
   background-color: #246781;
   color: white;
+  border-radius: 6px;
 }
 
 span.correct {

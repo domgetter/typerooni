@@ -71,20 +71,6 @@
                       :current-word 0
                       :offset-height 0}))
 
-#_(defn reset-state! []
-  (reset! state {:target-words (shuffle words)
-                      :words-typed []
-                      :current-word-timestamps []
-                      :current-word 0
-                      :offset-height 0}))
-
-(def this-run-words (shuffle words))
-
-(defn get-n-words [n]
-  (take n this-run-words))
-
-(def target (get-n-words 300))
-
 (defn home-page []
   [:div [:h2 "Welcome to typerooni"]
     [:div [:a {:href "/about"} "go to about page"]]
@@ -147,6 +133,7 @@
 
 (defn save-word-and-clear-input [input state]
   (save-word input state)
+  (js/console.log (str (:words-typed @state)))
   (clear-input (:target input)))
 
 (defn save-most-recent-timestamp [input state]
@@ -154,17 +141,23 @@
     (swap! state update-in
       [:current-word-timestamps] conj most-recent-timestamp)))
 
-(defn consume-input []
+(defn consume-input [keydown-input keypress-input state]
+  #_(js/setTimeout (go (>! keypress-input {:finish true})) 10000)
   (go
     (loop [[[input state] _] (alts! [keydown-input keypress-input])]
       (let [is-backspace (= (:which input) 8)
-            is-space (= (:which input) 32)]
+            is-space (= (:which input) 32)
+            #_#_is-over (:finish input)]
         (cond
           is-backspace (remove-most-recent-timestamp state)
           is-space (save-word-and-clear-input input state)
           :else (save-most-recent-timestamp input state))
-        (js/console.log (str (:words-typed @state)))
+        #_(js/console.log (str (:words-typed @state)))
         (recur (alts! [keydown-input keypress-input]))))))
+
+
+
+(swap! state assoc :input-chan (consume-input keydown-input keypress-input state))
 
 (defn event->map [e]
   #_(js/console.log e)
@@ -188,30 +181,65 @@
 
 (defn indexed-span [i w]
   ^{:key i}
+  #_(js/console.log i)
   [:span {:data-word-id i :class (str
                                    "target-word" \space
                                    (if (= i (:current-word @state)) "current") \space
-                                   i \space
+                                   #_#_i \space
                                    (if (>= i (:current-word @state)) "" (if (:correct ((:words-typed @state) i)) "correct" "incorrect")))} w])
 
 (defn word-view [target]
   (map-indexed indexed-span target))
 
 (defn typing-run-view [state]
-  [:div {:style {:width "800px" :height "9em" :overflow "hidden"}}
-    [:div {:style {:position "relative" :top (:offset-height @state)}} (doall (word-view (:target-words @state)))]])
+  #_(js/console.log "hello")
+  [:div {:style {:width "800px"
+                 :height "9em"
+                 :overflow "hidden"
+                 :border "1px solid grey"
+                 :padding "8px"
+                 :border-radius "6px"
+                 :box-shadow "2px 2px 2px grey"
+                 :margin-bottom "20px"}}
+    [:div {:style {:position "relative"
+                   :top (:offset-height @state)
+                   :transition "top 0.3s"
+                   :transition-timing-function "ease-in-out"
+                   }} (doall (word-view (take 100 (:target-words @state))))]])
 
 (defn typing-run-input []
   [:form
     [:input {:type "text"
              :onKeyDown (fn [e] (keydown-func e state))
-             :onKeyPress (fn [e] (keypress-func e state))}]])
+             :onKeyPress (fn [e] (keypress-func e state))
+             :style {
+               :width "100%"
+               :height "30px"
+               :font-size "24"
+               :padding-left "4px"
+               :border-radius "4px"}}]])
+
+(defn word->wpm [word]
+  (let [count (count (:times word))
+        sum (reduce + (:times word))]
+    [(:word word) (js/Math.round (/ 12000 (/ sum count)))]))
+
+(defn analysis [state]
+  [:table
+    (for [word (take 10 (reverse (map word->wpm (:words-typed @state))))] [:tr [:td (word 0)] [:td (word 1)]])])
 
 (defn typing-run-page []
-  [:div {:font-size "2em"}
-    [:span "This is a single run!"]
-    (typing-run-view state)
-    (typing-run-input)])
+  [:div
+    [:div {:style {:position "absolute"
+                   :top "50px"
+                   :left "30px"
+                   :height "300px"
+                   :width "180px"
+                   :border "solid 1px black"}} (analysis state)]
+    [:div {:font-size "2em"}
+      [:span "This is a single run!"]
+      (typing-run-view state)
+      (typing-run-input)]])
 
 (defn current-page []
   [:div [(session/get :current-page)]])
@@ -237,5 +265,4 @@
 (defn init! []
   (accountant/configure-navigation!)
   (accountant/dispatch-current!)
-  (mount-root)
-  (consume-input))
+  (mount-root))
