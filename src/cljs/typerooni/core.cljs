@@ -65,12 +65,22 @@
 
 (def keydown-input (chan))
 (def keypress-input (chan))
-(defonce state
-  (atom {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
-         :words-typed []
-         :current-word-timestamps []
-         :current-word 0
-         :offset-height 0}))
+
+(defn initial-game-state []
+  {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
+   :words-typed []
+   :current-word-timestamps []
+   :current-word 0
+   :offset-height 0
+   :start-time (.getTime (js/Date.))})
+
+(defn clear-input [input-field] (set! (.-value input-field) ""))
+
+(defn reset-game! [state input-field]
+  (reset! state (initial-game-state))
+  (clear-input input-field))
+
+(defonce state (atom (initial-game-state)))
 
 (defn home-page []
   [:div [:h2 "Welcome to typerooni"]
@@ -83,8 +93,6 @@
 
 (defn wpm [diff]
   (/ 12000 diff))
-
-(defn clear-input [input-field] (set! (.-value input-field) ""))
 
 (defn remove-most-recent-timestamp [state]
   (if (not (empty? (:current-word-timestamps @state))) (swap! state update-in [:current-word-timestamps] pop)))
@@ -182,14 +190,6 @@
           key-pressed (event->map e)]
       (go (>! keypress-input [key-pressed state]))))
 
-(defn reset-game! [state]
-  (reset! state
-    {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
-     :words-typed []
-     :current-word-timestamps []
-     :current-word 0
-     :offset-height 0}))
-
 (defn keydown-func [e state]
   (let [key-pressed {:which (.-which e)}
         is-backspace (= (:which key-pressed) 8)
@@ -197,7 +197,7 @@
         is-enter (= (:which key-pressed) 13)]
     (if is-backspace
       (go (>! keydown-input [key-pressed state])))
-    (if is-f5 (reset-game! state))
+    (if is-f5 (reset-game! state (.-target e)))
     (if (or is-f5 is-enter) (.preventDefault e))))
 
 (defn indexed-span [i word]
@@ -225,8 +225,8 @@
     [:div {:style {:position "relative"
                    :top (:offset-height @state)
                    :transition "top 0.3s"
-                   :transition-timing-function "ease-in-out"
-                   }} (doall (word-view (take 100 (:target-words @state))))]])
+                   :transition-timing-function "ease-in-out"}}
+      (doall (word-view (take 100 (:target-words @state))))]])
 
 (defn typing-run-input []
   [:form
