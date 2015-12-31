@@ -74,8 +74,8 @@
 
 (defn home-page []
   [:div [:h2 "Welcome to typerooni"]
-    [:div [:a {:href "/about"} "go to about page"]]
-    [:div [:a {:href "/typing-run"} "take a test"]]])
+    [:div [:a {:href "/abou"} "go to about page"]]
+    [:div [:a {:href "/test"} "take a test"]]])
 
 (defn about-page []
   [:div [:h2 "About typerooni"]
@@ -145,8 +145,8 @@
 
 (defn save-most-recent-timestamp [input state]
   (let [most-recent-timestamp (:timeStamp input)
-        first-letter (= 1 (count (.-value (:target input))))]
-    (if first-letter (reset-timestamps state))
+        is-first-letter (= 1 (count (.-value (:target input))))]
+    (if is-first-letter (reset-timestamps state))
     (swap! state update-in
       [:current-word-timestamps] conj most-recent-timestamp)))
 
@@ -182,13 +182,23 @@
           key-pressed (event->map e)]
       (go (>! keypress-input [key-pressed state]))))
 
+(defn reset-game! [state]
+  (reset! state
+    {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
+     :words-typed []
+     :current-word-timestamps []
+     :current-word 0
+     :offset-height 0}))
+
 (defn keydown-func [e state]
   (let [key-pressed {:which (.-which e)}
         is-backspace (= (:which key-pressed) 8)
+        is-f5 (= (:which key-pressed) 116)
         is-enter (= (:which key-pressed) 13)]
     (if is-backspace
       (go (>! keydown-input [key-pressed state])))
-    (if is-enter (.preventDefault e))))
+    (if is-f5 (reset-game! state))
+    (if (or is-f5 is-enter) (.preventDefault e))))
 
 (defn indexed-span [i word]
   ^{:key i}
@@ -205,7 +215,7 @@
 (defn typing-run-view [state]
   #_(js/console.log "hello")
   [:div {:style {:width "800px"
-                 :height "9em"
+                 :height "8.66em"
                  :overflow "hidden"
                  :border "1px solid grey"
                  :padding "8px"
@@ -242,7 +252,7 @@
     (for [[word wpm key] (take 10 (reverse (map-indexed word->wpm (:words-typed @state))))]
       ^{:key key} [:tr [:td word] [:td wpm]])]])
 
-(defn typing-run-page []
+(defn test-page []
   [:div
     [:div {:style {:position "absolute"
                    :top "50px"
@@ -267,9 +277,8 @@
 (secretary/defroute "/about" []
   (session/put! :current-page #'about-page))
 
-(secretary/defroute "/typing-run" []
-  (session/put! :current-page #'typing-run-page)
-  #_(js/console.log (str (js/document.getElementById "typing-test-input"))))
+(secretary/defroute "/test" []
+  (session/put! :current-page #'test-page))
 
 ;; -------------------------
 ;; Initialize app
