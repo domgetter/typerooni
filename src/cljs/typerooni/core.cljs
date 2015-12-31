@@ -67,12 +67,18 @@
 (def keypress-input (chan))
 
 (defn initial-game-state []
-  {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
-   :words-typed []
-   :current-word-timestamps []
-   :current-word 0
-   :offset-height 0
-   :start-time (.getTime (js/Date.))})
+  (let [start-time (.getTime (js/Date.))
+        end-time (+ start-time 60000)]
+    {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
+     :words-typed []
+     :current-word-timestamps []
+     :current-word 0
+     :offset-height 0
+     :start-time start-time
+     :end-time end-time
+     :running false
+     :started false
+     :finished false}))
 
 (defn clear-input [input-field] (set! (.-value input-field) ""))
 
@@ -185,10 +191,29 @@
    :timeStamp (.-timeStamp e)
    :target (.-target e)})
 
+(defn start-game! [state]
+  (let [start-time (.getTime (js/Date.))
+        end-time (+ start-time 60000)]
+    (swap! state assoc
+      :start-time start-time
+      :end-time end-time
+      :running true
+      :started true)))
+
+(defn end-game! [state]
+  (swap! state assoc
+    :running false
+    :finished true))
+
 (defn keypress-func [e state]
     (let [time-stamp (.-timeStamp e)
           key-pressed (event->map e)]
-      (go (>! keypress-input [key-pressed state]))))
+      (if (not (:started @state))
+        (start-game! state))
+      (if (> (.getTime (js/Date.)) (:end-time @state))
+        (end-game! state))
+      (if (and (not (:finised @state)) (:running @state))
+        (go (>! keypress-input [key-pressed state])))))
 
 (defn keydown-func [e state]
   (let [key-pressed {:which (.-which e)}
@@ -229,7 +254,7 @@
       (doall (word-view (take 100 (:target-words @state))))]])
 
 (defn typing-run-input []
-  [:form
+  [:form {:style {:width "600px" :float "left"}}
     [:input {:id "typing-test-input"
              :type "text"
              :onKeyDown (fn [e] (keydown-func e state))
@@ -244,29 +269,50 @@
 
 (defn word->wpm [i word]
   (let [count (count (:times word))
-        sum (reduce + (:times word))]
-    [(:word word) (js/Math.round (/ 12000 (/ sum count))) i]))
+        sum (reduce + (:times word))
+        timings (:times word)]
+    [(:word word) (js/Math.round (/ 12000 (/ sum count))) timings i]))
+
+(defn show-stats [word timings]
+  (js/console.log (str timings)))
 
 (defn analysis [state]
   [:table [:tbody
-    (for [[word wpm key] (take 10 (reverse (map-indexed word->wpm (:words-typed @state))))]
-      ^{:key key} [:tr [:td word] [:td wpm]])]])
+    [:tr [:th "Word"] [:th "WPM"]]
+    (for [[word wpm timings key] (take 10 (reverse (map-indexed word->wpm (:words-typed @state))))]
+      ^{:key key}
+      [:tr
+        [:td #_{:onMouseOver (fn [e] (show-stats word timings))} [:span {:title (str timings)} word]]
+        [:td wpm]])]])
+
+(defn view-state []
+  (str (dissoc @state :target-words)))
+
+(defn typing-run-timer [state]
+  [:span {:style {
+            :margin-left "20px"
+            :border "1px solid black"
+            :padding "4px"
+            :border-radius "3px"}}
+    (int (/ (- (:end-time @state) (.getTime (js/Date.))) 1000))])
 
 (defn test-page []
-  [:div
+  [:div {:style {:width "800px"}}
     [:div {:style {:position "absolute"
                    :top "50px"
                    :left "30px"
                    :height "300px"
                    :width "180px"
                    :border "solid 1px black"}} (analysis state)]
-    [:div {:font-size "2em"}
+    [:div {:font-size "2em" :width "800px"}
       [:span "This is a single run!"]
       (typing-run-view state)
-      (typing-run-input)]])
+      (typing-run-input)
+      (typing-run-timer state)
+      (if (:finished @state) [:div {:style {:clear "both"}} "Game over!"] )]])
 
 (defn current-page []
-  [:div [(session/get :current-page)]])
+  [:div {:style {:width "800px"}} [(session/get :current-page)]])
 
 ;; -------------------------
 ;; Routes
