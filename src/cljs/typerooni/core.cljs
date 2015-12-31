@@ -65,11 +65,12 @@
 
 (def keydown-input (chan))
 (def keypress-input (chan))
-(def state (atom {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
-                      :words-typed []
-                      :current-word-timestamps []
-                      :current-word 0
-                      :offset-height 0}))
+(defonce state
+  (atom {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
+         :words-typed []
+         :current-word-timestamps []
+         :current-word 0
+         :offset-height 0}))
 
 (defn home-page []
   [:div [:h2 "Welcome to typerooni"]
@@ -143,7 +144,9 @@
   (clear-input (:target input)))
 
 (defn save-most-recent-timestamp [input state]
-  (let [most-recent-timestamp (:timeStamp input)]
+  (let [most-recent-timestamp (:timeStamp input)
+        first-letter (= 1 (count (.-value (:target input))))]
+    (if first-letter (reset-timestamps state))
     (swap! state update-in
       [:current-word-timestamps] conj most-recent-timestamp)))
 
