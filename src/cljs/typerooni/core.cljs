@@ -109,8 +109,6 @@
 (defn current-word-html [state]
   (js/document.querySelector (str "[data-word-id=\"" (:current-word @state) "\"]")))
 
-
-
 (defn is-correct [input word]
   (= (apply str (butlast input)) word))
 
@@ -178,8 +176,6 @@
         #_(js/console.log (str (:words-typed @state)))
         (recur (alts! [keydown-input keypress-input]))))))
 
-
-
 (swap! state assoc :input-chan (consume-input keydown-input keypress-input state))
 
 (defn event->map [e]
@@ -207,13 +203,16 @@
 
 (defn keypress-func [e state]
     (let [time-stamp (.-timeStamp e)
-          key-pressed (event->map e)]
-      (if (not (:started @state))
-        (start-game! state))
-      (if (> (.getTime (js/Date.)) (:end-time @state))
-        (end-game! state))
+          input (event->map e)
+          is-space (= (:which input) 32)
+          game-has-not-started (not (:started @state))
+          game-has-ended (and (not (:finished @state)) (> (.getTime (js/Date.)) (:end-time @state)))
+          game-is-over-and-new-word (and (:finished @state) is-space)]
+      (if game-has-not-started (start-game! state))
+      (if game-has-ended (end-game! state))
+      (if game-is-over-and-new-word (clear-input (:target input)))
       (if (and (not (:finised @state)) (:running @state))
-        (go (>! keypress-input [key-pressed state])))))
+        (go (>! keypress-input [input state])))))
 
 (defn keydown-func [e state]
   (let [key-pressed {:which (.-which e)}
@@ -260,6 +259,10 @@
              :onKeyDown (fn [e] (keydown-func e state))
              :onKeyPress (fn [e] (keypress-func e state))
              :autoFocus "autoFocus"
+             :spellcheck "false"
+             :autocapitalize "off"
+             :autocorrect "off"
+             :autoComplete "off"
              :style {
                :width "100%"
                :height "30px"
@@ -296,6 +299,13 @@
             :border-radius "3px"}}
     (int (/ (- (:end-time @state) (.getTime (js/Date.))) 1000))])
 
+(defn stats [state]
+  [:div {:style {:clear "both"}}
+    [:span {:style {:padding-right "10px"}} (str "total words: " (count (:words-typed @state)))]
+    [:span {:style {:padding-right "10px" :color "green"}} (str "correct words: " (count (filter :correct (:words-typed @state))))]
+    [:span {:style {:padding-right "10px" :color "red"}} (str "incorrect words: " (count (remove :correct (:words-typed @state))))]
+    [:span {:style {:color "blue"}} (str "wpm: " (/ (reduce + (map count (map :word (filter :correct (:words-typed @state))))) 5))]])
+
 (defn test-page []
   [:div {:style {:width "800px"}}
     [:div {:style {:position "absolute"
@@ -309,7 +319,7 @@
       (typing-run-view state)
       (typing-run-input)
       (typing-run-timer state)
-      (if (:finished @state) [:div {:style {:clear "both"}} "Game over!"] )]])
+      (if (:finished @state) (stats state) )]])
 
 (defn current-page []
   [:div {:style {:width "800px"}} [(session/get :current-page)]])
