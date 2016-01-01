@@ -54,3 +54,40 @@ span.correct {
 span.incorrect {
   color: #C52;
 }
+table, th, td {
+    border: 1px solid black;
+    border-collapse: collapse;
+}
+
+#games-analysis, #games-analysis-wordlets {
+  clear: both;
+}
+
+#games-analysis-total-words {
+  padding-right: 10px;
+}
+
+#games-analysis-correct-words {
+  color: green;
+  padding-right: 10px;
+}
+
+#games-analysis-incorrect-words {
+  color: red;
+  padding-right: 10px;
+}
+
+#games-analysis-wpm {
+  color: blue;
+}
+
+#game-timer {
+  margin-left: 20px;
+  border: 1px solid black;
+  padding: 4px;
+  border-radius: 3px;
+}
+
+.game-over {
+  background-color: lightgrey;
+}

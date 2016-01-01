@@ -42,6 +42,7 @@
   "again" "side" "good" "four" "always" "mile" "soon" "know" "man" "should"
   "live" "begin" "more"])
 
+
 (defonce words ["the" "name" "of" "very" "to" "through" "and" "just" "form" "in"
   "much" "is" "great" "it" "think" "you" "say" "that" "help" "he" "low" "was"
   "line" "for" "before" "on" "turn" "are" "cause" "with" "same" "as" "mean"
@@ -270,7 +271,8 @@
 
 (defn typing-run-view [state]
   #_(js/console.log "hello")
-  [:div {:style {:width "800px"
+  [:div {:class (if (:finished @state) "game-over" "")
+         :style {:width "800px"
                  :height "8.66em"
                  :overflow "hidden"
                  :border "1px solid grey"
@@ -323,13 +325,16 @@
 (defn view-state []
   (str (dissoc @state :target-words)))
 
+(defn game-timer [state]
+  (cond
+    (:finished @state) 0
+    (not (:started @state)) 60
+    :else (int (/ (- (:end-time @state) (.getTime (js/Date.))) 1000))))
+
 (defn typing-run-timer [state]
-  [:span {:style {
-            :margin-left "20px"
-            :border "1px solid black"
-            :padding "4px"
-            :border-radius "3px"}}
-    (int (/ (- (:end-time @state) (.getTime (js/Date.))) 1000))])
+  (let [timer (game-timer state)]
+    [:span {:id "game-timer"}
+      timer]))
 
 (defn word->wordlets-with-times [w]
   ;{:word "there " :times [45 63 96 58 111]} ->
@@ -347,30 +352,40 @@
   ;  (("th" 23) ("he" 63) ("e " 88) ("th" 45) ("he" 63) ("er" 96) ("re" 58) ("e " 111)) ->
   ;    {"th" [23 45], "he" [63 63], "e " [88 111], "er" [96], "re" [58]} ->
   ;      [["th" 34] ["he" 63] ["e " 99.5] ["er" 96] ["re" 58]]
-  (map-indexed (fn [i [w ts]] [w #_(str (into [] (map identity (reverse (sort ts))))) (int (/ (reduce + ts) (count ts))) i])
+  (map-indexed (fn [i [w ts]] [w (int (/ (reduce + ts) (count ts))) (str (into [] (reverse (sort ts)))) i])
     (reduce wordlet-reducer {}
       (mapcat word->wordlets-with-times words))))
 
 #_(defn wordlets [words]
   (into [] (sort-by second < (map-indexed (fn [i w] [(:word w) (first (:times w)) i]) words))))
 
+
 (defn stats [state]
-  [:div {:style {:clear "both"}}
-    [:span {:style {:padding-right "10px"}}
-      (str "total words: " (count (:words-typed @state)))]
-    [:span {:style {:padding-right "10px" :color "green"}}
-      (str "correct words: " (count (filter :correct (:words-typed @state))))]
-    [:span {:style {:padding-right "10px" :color "red"}}
-      (str "incorrect words: " (count (remove :correct (:words-typed @state))))]
-    [:span {:style {:color "blue"}}
-      (str "wpm: " (/ (reduce + (map count (map :word (filter :correct (:words-typed @state))))) 5))]
-    [:div {:style {:clear "both"}}
+  (let [total-words (count (:words-typed @state))
+        total-correct-words (count (filter :correct (:words-typed @state)))
+        total-incorrect-words (count (remove :correct (:words-typed @state)))
+        total-number-of-characters (->> (:words-typed @state)
+                                        (filter :correct)
+                                        (map :word)
+                                        (map count)
+                                        (reduce +))
+        total-words-wpm (/ total-number-of-characters 5)]
+  [:div {:id "games-analysis"}
+    [:span {:id "games-analysis-total-words"}
+      (str "total words: " total-words)]
+    [:span {:id "games-analysis-correct-words"}
+      (str "correct words: " total-correct-words)]
+    [:span {:id "games-analysis-incorrect-words"}
+      (str "incorrect words: " total-incorrect-words)]
+    [:span {:id "games-analysis-wpm"}
+      (str "wpm: " total-words-wpm)]
+    [:div {:id "games-analysis-wordlets"}
       [:table
         [:tbody
-          [:tr [:th "Wordlet"] [:th "average ms"]
-          (for [wordlet (sort-by second < (wordlets (:words-typed @state)))]
-            ^{:key (wordlet 2)}
-            [:tr [:td (wordlet 0)] [:td (wordlet 1)]])]]]]])
+          [:tr [:th "Wordlet"] [:th "Average ms"] [:th "Timings"]
+          (for [[wordlet average timings key] (sort-by second < (wordlets (:words-typed @state)))]
+            ^{:key key}
+            [:tr [:td wordlet] [:td average] [:td timings]])]]]]]))
 
 (defn test-page []
   [:div {:style {:width "800px"}}
