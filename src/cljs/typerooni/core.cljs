@@ -11,6 +11,37 @@
 ;; -------------------------
 ;; Views
 
+(defonce words10ff ["or" "line" "important" "may" "life" "mountain" "went"
+  "change" "along" "water" "through" "just" "look" "because" "than" "into"
+  "three" "after" "does" "stop" "get" "eye" "small" "world" "carry" "play"
+  "all" "really" "before" "don't" "family" "river" "enough" "another" "came"
+  "number" "why" "might" "write" "must" "other" "air" "something" "even" "own"
+  "children" "in" "keep" "saw" "kind" "see" "without" "country" "left" "night"
+  "would" "for" "name" "being" "far" "quickly" "down" "between" "like" "miss"
+  "to" "very" "which" "who" "seem" "some" "large" "letter" "food" "got" "never"
+  "feet" "part" "from" "have" "away" "sound" "same" "those" "take" "great"
+  "make" "no" "said" "day" "mean" "plant" "she" "book" "quick" "most" "hard"
+  "way" "where" "long" "and" "say" "follow" "around" "each" "young" "animal"
+  "he" "land" "been" "do" "car" "place" "together" "Indian" "will" "sentence"
+  "group" "point" "different" "white" "can" "page" "them" "thought" "song" "new"
+  "watch" "oil" "we" "ask" "two" "not" "any" "boy" "are" "list" "an" "if" "be"
+  "city" "time" "end" "these" "picture" "show" "out" "tree" "over" "by" "run"
+  "form" "head" "leave" "house" "you" "start" "right" "his" "that" "hear" "on"
+  "so" "her" "how" "high" "me" "my" "sea" "study" "help" "is" "move" "your"
+  "face" "what" "read" "it's" "their" "big" "use" "too" "below" "light" "when"
+  "give" "near" "its" "of" "want" "later" "found" "home" "it" "both" "then"
+  "talk" "earth" "until" "set" "only" "idea" "men" "quite" "old" "off" "took"
+  "has" "last" "us" "school" "made" "had" "hand" "second" "tell" "come" "well"
+  "example" "year" "girl" "much" "every" "walk" "up" "here" "spell" "need"
+  "there" "next" "answer" "open" "him" "add" "such" "many" "learn" "was"
+  "people" "as" "with" "mother" "word" "our" "first" "did" "America" "could"
+  "were" "now" "back" "find" "work" "under" "still" "little" "eat" "father"
+  "also" "state" "thing" "try" "think" "often" "paper" "turn" "above" "go"
+  "once" "they" "call" "the" "close" "this" "grow" "one" "while" "sometimes"
+  "story" "about" "but" "cut" "at" "few" "question" "began" "almost" "let" "put"
+  "again" "side" "good" "four" "always" "mile" "soon" "know" "man" "should"
+  "live" "begin" "more"])
+
 (defonce words ["the" "name" "of" "very" "to" "through" "and" "just" "form" "in"
   "much" "is" "great" "it" "think" "you" "say" "that" "help" "he" "low" "was"
   "line" "for" "before" "on" "turn" "are" "cause" "with" "same" "as" "mean"
@@ -69,7 +100,7 @@
 (defn initial-game-state []
   (let [start-time (.getTime (js/Date.))
         end-time (+ start-time 60000)]
-    {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (shuffle words)))
+    {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (take 200 (repeatedly #(rand-nth words10ff)))))
      :words-typed []
      :current-word-timestamps []
      :current-word 0
@@ -171,12 +202,13 @@
             #_#_is-over (:finish input)]
         (cond
           is-backspace (remove-most-recent-timestamp state)
-          is-space (save-word-and-clear-input input state)
-          :else (save-most-recent-timestamp input state))
+              is-space (save-word-and-clear-input input state)
+                 :else (save-most-recent-timestamp input state))
         #_(js/console.log (str (:words-typed @state)))
         (recur (alts! [keydown-input keypress-input]))))))
 
-(swap! state assoc :input-chan (consume-input keydown-input keypress-input state))
+(swap! state assoc
+  :input-chan (consume-input keydown-input keypress-input state))
 
 (defn event->map [e]
   #_(js/console.log e)
@@ -259,9 +291,9 @@
              :onKeyDown (fn [e] (keydown-func e state))
              :onKeyPress (fn [e] (keypress-func e state))
              :autoFocus "autoFocus"
-             :spellcheck "false"
-             :autocapitalize "off"
-             :autocorrect "off"
+             :spellCheck "false"
+             :autoCapitalize "off"
+             :autoCorrect "off"
              :autoComplete "off"
              :style {
                :width "100%"
@@ -299,12 +331,46 @@
             :border-radius "3px"}}
     (int (/ (- (:end-time @state) (.getTime (js/Date.))) 1000))])
 
+(defn word->wordlets-with-times [w]
+  ;{:word "there " :times [45 63 96 58 111]} ->
+  ;  (("th" 45) ("he" 63) ("er" 96) ("re" 58) ("e " 111))
+  (partition 2 2 (interleave (map #(apply str %) (partition 2 1 (:word w))) (:times w))))
+
+(defn wordlet-reducer [acc [wordlet timing]]
+  (assoc acc wordlet (conj (if (acc wordlet) (acc wordlet) []) timing)))
+
+(defn wordlets [words]
+  ;[{:word "the " :times [23 63 88]} {:word "there " :times [45 63 96 58 111]}] ->
+  ;  [["th" 34] ["he" 63] ["e " 99.5] ["er" 96] ["re" 58]]
+
+  ;[{:word "the " :times [23 63 88]} {:word "there " :times [45 63 96 58 111]}]
+  ;  (("th" 23) ("he" 63) ("e " 88) ("th" 45) ("he" 63) ("er" 96) ("re" 58) ("e " 111)) ->
+  ;    {"th" [23 45], "he" [63 63], "e " [88 111], "er" [96], "re" [58]} ->
+  ;      [["th" 34] ["he" 63] ["e " 99.5] ["er" 96] ["re" 58]]
+  (map-indexed (fn [i [w ts]] [w #_(str (into [] (map identity (reverse (sort ts))))) (int (/ (reduce + ts) (count ts))) i])
+    (reduce wordlet-reducer {}
+      (mapcat word->wordlets-with-times words))))
+
+#_(defn wordlets [words]
+  (into [] (sort-by second < (map-indexed (fn [i w] [(:word w) (first (:times w)) i]) words))))
+
 (defn stats [state]
   [:div {:style {:clear "both"}}
-    [:span {:style {:padding-right "10px"}} (str "total words: " (count (:words-typed @state)))]
-    [:span {:style {:padding-right "10px" :color "green"}} (str "correct words: " (count (filter :correct (:words-typed @state))))]
-    [:span {:style {:padding-right "10px" :color "red"}} (str "incorrect words: " (count (remove :correct (:words-typed @state))))]
-    [:span {:style {:color "blue"}} (str "wpm: " (/ (reduce + (map count (map :word (filter :correct (:words-typed @state))))) 5))]])
+    [:span {:style {:padding-right "10px"}}
+      (str "total words: " (count (:words-typed @state)))]
+    [:span {:style {:padding-right "10px" :color "green"}}
+      (str "correct words: " (count (filter :correct (:words-typed @state))))]
+    [:span {:style {:padding-right "10px" :color "red"}}
+      (str "incorrect words: " (count (remove :correct (:words-typed @state))))]
+    [:span {:style {:color "blue"}}
+      (str "wpm: " (/ (reduce + (map count (map :word (filter :correct (:words-typed @state))))) 5))]
+    [:div {:style {:clear "both"}}
+      [:table
+        [:tbody
+          [:tr [:th "Wordlet"] [:th "average ms"]
+          (for [wordlet (sort-by second < (wordlets (:words-typed @state)))]
+            ^{:key (wordlet 2)}
+            [:tr [:td (wordlet 0)] [:td (wordlet 1)]])]]]]])
 
 (defn test-page []
   [:div {:style {:width "800px"}}
