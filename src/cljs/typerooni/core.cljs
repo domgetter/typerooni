@@ -99,19 +99,17 @@
 (def keypress-input (chan))
 
 (defn initial-game-state []
-  (let [start-time (.getTime (js/Date.))
-        end-time (+ start-time 60000)]
     {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (take 200 (repeatedly #(rand-nth words10ff)))))
      :words-typed []
      :current-word-timestamps []
+     :current-word-backspace-used false
      :current-word 0
      :offset-height 0
-     :start-time start-time
-     :end-time end-time
-     :running false
+     :start-time 0
+     :end-time 60000
      :started false
      :finished false
-     :time-left 60}))
+     :time-left 60})
 
 (defn clear-input [input-field] (set! (.-value input-field) ""))
 
@@ -134,10 +132,15 @@
   (/ 12000 diff))
 
 (defn remove-most-recent-timestamp [state]
-  (if (not (empty? (:current-word-timestamps @state))) (swap! state update-in [:current-word-timestamps] pop)))
+  (if (not (empty? (:current-word-timestamps @state)))
+      (do
+        (swap! state update-in [:current-word-timestamps] pop)
+        (swap! state assoc :current-word-backspace-used true))
+      (swap! state assoc :current-word-backspace-used false)))
 
 (defn reset-timestamps [state]
-  (swap! state assoc :current-word-timestamps []))
+  (swap! state assoc :current-word-timestamps [])
+  (swap! state assoc :current-word-backspace-used false))
 
 (defn current-word-html [state]
   (js/document.querySelector (str "[data-word-id=\"" (:current-word @state) "\"]")))
@@ -150,7 +153,8 @@
         time-diffs (into [] (map #(- %2 %1) times (rest times)))
         word (.-value (:target input))
         correct (is-correct word (:word (nth (:target-words @state) (:current-word @state))))
-        new-word {:times time-diffs :word word :correct correct}
+        backspace-used (:current-word-backspace-used @state)
+        new-word {:times time-diffs :word word :correct correct :backspace-used backspace-used}
         correctness (if correct "correct" "incorrect")
         new-target (assoc (nth (:target-words @state) (:current-word @state)) :correctness correctness)]
     (swap! state update-in
@@ -186,7 +190,6 @@
 (defn save-word-and-clear-input [input state]
   (save-word input state)
   (js/console.log (str (:words-typed @state)))
-  (js/console.log (str (:time-left @state)))
   (clear-input (:target input)))
 
 (defn save-most-recent-timestamp [input state]
@@ -202,11 +205,14 @@
     :finished true))
 
 (defn game-over? [state]
-  (and (not (:finished @state)) (> (.getTime (js/Date.)) (:end-time @state))))
+  (and (:running @state)
+       (> (.getTime (js/Date.)) (:end-time @state))))
 
 (defn check-if-game-over-and-update-timer [state]
-  (if (or (game-over? state) (:finished @state)) (end-game! state)
-  (swap! state update-in [:time-left] dec)))
+  (if (:started @state)
+    (if (or (game-over? state) (:finished @state))
+        (end-game! state)
+        (swap! state update-in [:time-left] dec))))
 
 (defn consume-input [keydown-input keypress-input state]
   (js/setInterval #(go (>! keypress-input [{:timer true} state])) 1000)
@@ -221,7 +227,6 @@
               is-space (save-word-and-clear-input input state)
               is-timer (check-if-game-over-and-update-timer state)
                  :else (save-most-recent-timestamp input state))
-        #_(js/console.log (str (:words-typed @state)))
         (recur (alts! [keydown-input keypress-input]))))))
 
 (swap! state assoc
@@ -270,7 +275,6 @@
 
 (defn indexed-span [i word]
   ^{:key i}
-  #_(js/console.log i)
   [:span {:data-word-id i :class (str
                                    "target-word" \space
                                    (if (= i (:current-word @state)) "current") \space
@@ -281,7 +285,6 @@
   (map-indexed indexed-span target))
 
 (defn typing-run-view [state]
-  #_(js/console.log "hello")
   [:div {:class (if (:finished @state) "game-over" "")
          :style {:width "800px"
                  :height "8.66em"
@@ -346,7 +349,10 @@
 (defn typing-run-timer [state]
   (let [timer (game-timer state)]
     [:span {:id "game-timer"}
-      timer]))
+      (cond
+        (= 60 timer) "1:00"
+        (< 9 timer 60) (str "0:" timer)
+        :else (str "0:0" timer))]))
 
 (defn word->wordlets-with-times [w]
   ;{:word "there " :times [45 63 96 58 111]} ->
@@ -356,7 +362,12 @@
 (defn wordlet-reducer [acc [wordlet timing]]
   (assoc acc wordlet (conj (if (acc wordlet) (acc wordlet) []) timing)))
 
-(defn wordlets [words]
+(defn wordlet-averages [[wordlet time-stamp]]
+  [wordlet
+   (int (/ (reduce + time-stamp) (count time-stamp)))
+   (str (into [] (reverse (sort time-stamp))))])
+
+(defn sorted-wordlets [words]
   ;[{:word "the " :times [23 63 88]} {:word "there " :times [45 63 96 58 111]}] ->
   ;  [["th" 34] ["he" 63] ["e " 99.5] ["er" 96] ["re" 58]]
 
@@ -364,13 +375,14 @@
   ;  (("th" 23) ("he" 63) ("e " 88) ("th" 45) ("he" 63) ("er" 96) ("re" 58) ("e " 111)) ->
   ;    {"th" [23 45], "he" [63 63], "e " [88 111], "er" [96], "re" [58]} ->
   ;      [["th" 34] ["he" 63] ["e " 99.5] ["er" 96] ["re" 58]]
-  (map-indexed (fn [i [w ts]] [w (int (/ (reduce + ts) (count ts))) (str (into [] (reverse (sort ts)))) i])
-    (reduce wordlet-reducer {}
-      (mapcat word->wordlets-with-times words))))
-
-#_(defn wordlets [words]
-  (into [] (sort-by second < (map-indexed (fn [i w] [(:word w) (first (:times w)) i]) words))))
-
+  (->> words
+    (remove :backspace-used)
+    (filter :correct)
+    (mapcat word->wordlets-with-times)
+    (reduce wordlet-reducer {})
+    (map wordlet-averages)
+    (sort-by second <)
+    (map-indexed (fn [i w] [w i]))))
 
 (defn stats [state]
   (let [total-words (count (:words-typed @state))
@@ -395,7 +407,7 @@
       [:table
         [:tbody
           [:tr [:th "Wordlet"] [:th "Average ms"] [:th "Timings"]
-          (for [[wordlet average timings key] (sort-by second < (wordlets (:words-typed @state)))]
+          (for [[[wordlet average timings] key] (sorted-wordlets (:words-typed @state))]
             ^{:key key}
             [:tr [:td wordlet] [:td average] [:td timings]])]]]]]))
 
