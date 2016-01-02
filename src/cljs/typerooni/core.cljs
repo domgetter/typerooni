@@ -110,7 +110,8 @@
      :end-time end-time
      :running false
      :started false
-     :finished false}))
+     :finished false
+     :time-left 60}))
 
 (defn clear-input [input-field] (set! (.-value input-field) ""))
 
@@ -185,6 +186,7 @@
 (defn save-word-and-clear-input [input state]
   (save-word input state)
   (js/console.log (str (:words-typed @state)))
+  (js/console.log (str (:time-left @state)))
   (clear-input (:target input)))
 
 (defn save-most-recent-timestamp [input state]
@@ -194,16 +196,30 @@
     (swap! state update-in
       [:current-word-timestamps] conj most-recent-timestamp)))
 
+(defn end-game! [state]
+  (swap! state assoc
+    :running false
+    :finished true))
+
+(defn game-over? [state]
+  (and (not (:finished @state)) (> (.getTime (js/Date.)) (:end-time @state))))
+
+(defn check-if-game-over-and-update-timer [state]
+  (if (or (game-over? state) (:finished @state)) (end-game! state)
+  (swap! state update-in [:time-left] dec)))
+
 (defn consume-input [keydown-input keypress-input state]
-  #_(js/setTimeout (go (>! keypress-input {:finish true})) 10000)
+  (js/setInterval #(go (>! keypress-input [{:timer true} state])) 1000)
   (go
     (loop [[[input state] _] (alts! [keydown-input keypress-input])]
       (let [is-backspace (= (:which input) 8)
             is-space (= (:which input) 32)
+            is-timer (:timer input)
             #_#_is-over (:finish input)]
         (cond
           is-backspace (remove-most-recent-timestamp state)
               is-space (save-word-and-clear-input input state)
+              is-timer (check-if-game-over-and-update-timer state)
                  :else (save-most-recent-timestamp input state))
         #_(js/console.log (str (:words-typed @state)))
         (recur (alts! [keydown-input keypress-input]))))))
@@ -229,17 +245,12 @@
       :running true
       :started true)))
 
-(defn end-game! [state]
-  (swap! state assoc
-    :running false
-    :finished true))
-
 (defn keypress-func [e state]
     (let [time-stamp (.-timeStamp e)
           input (event->map e)
           is-space (= (:which input) 32)
           game-has-not-started (not (:started @state))
-          game-has-ended (and (not (:finished @state)) (> (.getTime (js/Date.)) (:end-time @state)))
+          game-has-ended (game-over? state)
           game-is-over-and-new-word (and (:finished @state) is-space)]
       (if game-has-not-started (start-game! state))
       (if game-has-ended (end-game! state))
@@ -329,7 +340,8 @@
   (cond
     (:finished @state) 0
     (not (:started @state)) 60
-    :else (int (/ (- (:end-time @state) (.getTime (js/Date.))) 1000))))
+    ;:else (int (/ (- (:end-time @state) (.getTime (js/Date.))) 1000))))
+    :else (:time-left @state)))
 
 (defn typing-run-timer [state]
   (let [timer (game-timer state)]
@@ -399,7 +411,7 @@
       [:span "This is a single run!"]
       (typing-run-view state)
       (typing-run-input)
-      (typing-run-timer state)
+      [typing-run-timer state]
       (if (:finished @state) (stats state) )]])
 
 (defn current-page []
