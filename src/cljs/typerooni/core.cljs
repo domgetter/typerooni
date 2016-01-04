@@ -11,7 +11,7 @@
 ;; -------------------------
 ;; Views
 
-(defonce words10ff ["or" "line" "important" "may" "life" "mountain" "went"
+(defonce words-10ff ["or" "line" "important" "may" "life" "mountain" "went"
   "change" "along" "water" "through" "just" "look" "because" "than" "into"
   "three" "after" "does" "stop" "get" "eye" "small" "world" "carry" "play"
   "all" "really" "before" "don't" "family" "river" "enough" "another" "came"
@@ -43,7 +43,7 @@
   "live" "begin" "more"])
 
 
-(defonce words ["the" "name" "of" "very" "to" "through" "and" "just" "form" "in"
+(defonce words-aoeu ["the" "name" "of" "very" "to" "through" "and" "just" "form" "in"
   "much" "is" "great" "it" "think" "you" "say" "that" "help" "he" "low" "was"
   "line" "for" "before" "on" "turn" "are" "cause" "with" "same" "as" "mean"
   "differ" "his" "move" "they" "right" "be" "boy" "at" "old" "one" "too" "have"
@@ -98,8 +98,15 @@
 (def keydown-input (chan))
 (def keypress-input (chan))
 
+(defn n-random-words [n wordlist]
+  (->> (take n (repeatedly #(rand-nth wordlist)))
+       (map (fn [w] {:word w :correctness ""}))
+       (into [])))
+
+(defonce history (atom []))
+
 (defn initial-game-state []
-    {:target-words (into [] (map (fn [w] {:word w :correctness ""}) (take 200 (repeatedly #(rand-nth words10ff)))))
+    {:target-words (n-random-words 200 words-10ff)
      :words-typed []
      :current-word-timestamps []
      :current-word-backspace-used false
@@ -114,6 +121,7 @@
 (defn clear-input [input-field] (set! (.-value input-field) ""))
 
 (defn reset-game! [state input-field]
+  (js/clearInterval (:timer-pid @state))
   (reset! state (initial-game-state))
   (clear-input input-field))
 
@@ -189,7 +197,7 @@
 
 (defn save-word-and-clear-input [input state]
   (save-word input state)
-  (js/console.log (str (:words-typed @state)))
+  #_(js/console.log (str (:words-typed @state)))
   (clear-input (:target input)))
 
 (defn save-most-recent-timestamp [input state]
@@ -200,9 +208,14 @@
       [:current-word-timestamps] conj most-recent-timestamp)))
 
 (defn end-game! [state]
-  (swap! state assoc
-    :running false
-    :finished true))
+  (if (and (:running @state) (not (:finished @state)))
+    (do
+      (swap! state assoc
+        :running false
+        :finished true)
+      (js/clearInterval (:timer-pid @state))
+      (swap! history conj
+        (:words-typed @state)))))
 
 (defn game-over? [state]
   (and (:running @state)
@@ -215,7 +228,6 @@
         (swap! state update-in [:time-left] dec))))
 
 (defn consume-input [keydown-input keypress-input state]
-  (js/setInterval #(go (>! keypress-input [{:timer true} state])) 1000)
   (go
     (loop [[[input state] _] (alts! [keydown-input keypress-input])]
       (let [is-backspace (= (:which input) 8)
@@ -245,10 +257,12 @@
   (let [start-time (.getTime (js/Date.))
         end-time (+ start-time 60000)]
     (swap! state assoc
+      :timer-pid (js/window.setInterval #(go (>! keypress-input [{:timer true} state])) 1000)
       :start-time start-time
       :end-time end-time
       :running true
-      :started true)))
+      :started true))
+  #_(js/console.log (:timer-pid @state)))
 
 (defn keypress-func [e state]
     (let [time-stamp (.-timeStamp e)
@@ -273,32 +287,24 @@
     (if is-f5 (reset-game! state (.-target e)))
     (if (or is-f5 is-enter) (.preventDefault e))))
 
-(defn indexed-span [i word]
+(defn indexed-span [i word state]
   ^{:key i}
-  [:span {:data-word-id i :class (str
-                                   "target-word" \space
-                                   (if (= i (:current-word @state)) "current") \space
-                                   #_(if (>= i (:current-word @state)) "" (if (:correct ((:words-typed @state) i)) "correct" "incorrect"))
-                                   (:correctness ((:target-words @state) i)))} (:word word)])
+  [:span {:data-word-id i
+          :class (str
+                   "target-word" \space
+                   (if (= i (:current-word @state)) "current") \space
+                   (:correctness ((:target-words @state) i)))}
+    (:word word)])
 
-(defn word-view [target]
-  (map-indexed indexed-span target))
+(defn word-view [target state]
+  (map-indexed (fn [i word] (indexed-span i word state)) target))
 
 (defn typing-run-view [state]
-  [:div {:class (if (:finished @state) "game-over" "")
-         :style {:width "800px"
-                 :height "8.66em"
-                 :overflow "hidden"
-                 :border "1px solid grey"
-                 :padding "8px"
-                 :border-radius "6px"
-                 :box-shadow "2px 2px 2px grey"
-                 :margin-bottom "20px"}}
-    [:div {:style {:position "relative"
-                   :top (:offset-height @state)
-                   :transition "top 0.3s"
-                   :transition-timing-function "ease-in-out"}}
-      (doall (word-view (take 100 (:target-words @state))))]])
+  [:div {:id "target-word-view"
+         :class (if (:finished @state) "game-over" "")}
+    [:div {:id "target-words"
+           :style {:top (:offset-height @state)}}
+      (doall (word-view (take 100 (:target-words @state)) state))]])
 
 (defn typing-run-input []
   [:form {:style {:width "600px" :float "left"}}
@@ -343,8 +349,8 @@
   (cond
     (:finished @state) 0
     (not (:started @state)) 60
-    ;:else (int (/ (- (:end-time @state) (.getTime (js/Date.))) 1000))))
-    :else (:time-left @state)))
+    :else (int (/ (- (:end-time @state) (.getTime (js/Date.))) 1000))))
+    ;; :else (:time-left @state)))
 
 (defn typing-run-timer [state]
   (let [timer (game-timer state)]
@@ -356,25 +362,28 @@
 
 (defn word->wordlets-with-times [w]
   ;{:word "there " :times [45 63 96 58 111]} ->
-  ;  (("th" 45) ("he" 63) ("er" 96) ("re" 58) ("e " 111))
-  (partition 2 2 (interleave (map #(apply str %) (partition 2 1 (:word w))) (:times w))))
+  ;  (("th" [45 "there "]) ("he" 63) ("er" 96) ("re" 58) ("e " 111))
+  (partition 2 2 (interleave (map #(apply str %) (partition 2 1 (:word w))) (map (fn [t] [t (:word w)]) (:times w)))))
 
 (defn wordlet-reducer [acc [wordlet timing]]
   (assoc acc wordlet (conj (if (acc wordlet) (acc wordlet) []) timing)))
 
 (defn wordlet-averages [[wordlet time-stamp]]
+  (let [timings (map first time-stamp)]
   [wordlet
-   (int (/ (reduce + time-stamp) (count time-stamp)))
-   (str (into [] (reverse (sort time-stamp))))])
+   (int (/ (reduce + timings) (count timings)))
+   time-stamp]))
 
 (defn sorted-wordlets [words]
-  ;[{:word "the " :times [23 63 88]} {:word "there " :times [45 63 96 58 111]}] ->
+  ;[{:word "the " :times [23 63 88] :backspace-used false :correct true}
+  ; {:word "there " :times [45 63 96 58 111] :backspace-used false :correct true}]
   ;  [["th" 34] ["he" 63] ["e " 99.5] ["er" 96] ["re" 58]]
 
   ;[{:word "the " :times [23 63 88]} {:word "there " :times [45 63 96 58 111]}]
   ;  (("th" 23) ("he" 63) ("e " 88) ("th" 45) ("he" 63) ("er" 96) ("re" 58) ("e " 111)) ->
-  ;    {"th" [23 45], "he" [63 63], "e " [88 111], "er" [96], "re" [58]} ->
+  ;    {"th" [[23 "the "] [45 "there "]], "he" [63 63], "e " [88 111], "er" [96], "re" [58]} ->
   ;      [["th" 34] ["he" 63] ["e " 99.5] ["er" 96] ["re" 58]]
+  ;        [[["th" 34] 0] [["he" 63] 1] [["e " 99.5] 2] [["er" 96] 3] [["re" 58] 4]]
   (->> words
     (remove :backspace-used)
     (filter :correct)
@@ -407,13 +416,13 @@
       [:table
         [:tbody
           [:tr [:th "Wordlet"] [:th "Average ms"] [:th "Timings"]
-          (for [[[wordlet average timings] key] (sorted-wordlets (:words-typed @state))]
+          (for [[[wordlet average timings] key] (sorted-wordlets (mapcat identity @history))]
             ^{:key key}
-            [:tr [:td wordlet] [:td average] [:td timings]])]]]]]))
+            [:tr [:td wordlet] [:td average] [:td (str timings)]])]]]]]))
 
 (defn test-page []
   [:div {:style {:width "800px"}}
-    [:div {:style {:position "absolute"
+    #_[:div {:style {:position "absolute"
                    :top "50px"
                    :left "30px"
                    :height "300px"
@@ -427,7 +436,7 @@
       (if (:finished @state) (stats state) )]])
 
 (defn current-page []
-  [:div {:style {:width "800px"}} [(session/get :current-page)]])
+  [:div {:style {:width "800px"}} (test-page)])
 
 ;; -------------------------
 ;; Routes

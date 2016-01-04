@@ -91,3 +91,20 @@ table, th, td {
 .game-over {
   background-color: lightgrey;
 }
+
+#target-word-view {
+  width: 800px;
+  height: 8.66em;
+  overflow: hidden;
+  border: 1px solid grey;
+  padding: 8px;
+  border-radius: 6px;
+  box-shadow: 2px 2px 2px grey;
+  margin-bottom: 20px;
+}
+
+#target-words {
+  position: relative;
+  transition: top 0.3s;
+  transition-timing-function: ease-in-out;
+}
