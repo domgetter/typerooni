@@ -304,7 +304,7 @@
          :class (if (:finished @state) "game-over" "")}
     [:div {:id "target-words"
            :style {:top (:offset-height @state)}}
-      (doall (word-view (take 100 (:target-words @state)) state))]])
+      (doall (word-view (take 150 (:target-words @state)) state))]])
 
 (defn typing-run-input []
   [:form {:style {:width "600px" :float "left"}}
