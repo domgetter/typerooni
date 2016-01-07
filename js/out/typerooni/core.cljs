@@ -98,25 +98,42 @@
 (def keydown-input (chan))
 (def keypress-input (chan))
 
+(defn words-rows-reducer [row-length [full pending] word]
+  (let [total-chars-of-word-and-pending (apply + (count (:word word)) (map count (map :word pending))) ; this could be fancier, taking into account space width and individual letter width
+        adding-word-would-overflow-row (> total-chars-of-word-and-pending row-length)]
+    (if adding-word-would-overflow-row
+      [(conj full pending) [word]]
+      [full (conj pending word)])))
+
+(defn words->rows [words]
+  (apply conj (reduce (partial words-rows-reducer 32) [[] []] words)))
+
 (defn n-random-words [n wordlist]
   (->> (take n (repeatedly #(rand-nth wordlist)))
-       (map (fn [w] {:word w :correctness ""}))
+       (map-indexed (fn [i w] {:word w :correctness "" :id i}))
        (into [])))
 
 (defonce history (atom []))
 
+(defn history-json []
+  (clj->js @history))
+
 (defn initial-game-state []
-    {:target-words (n-random-words 200 words-10ff)
+  (let [target-words (n-random-words 500 words-10ff)
+        target-words-rows (words->rows target-words)]
+    {:target-words target-words
+     :target-words-rows target-words-rows ; needs to be recalculated if the target words view changes width
      :words-typed []
      :current-word-timestamps []
      :current-word-backspace-used false
      :current-word 0
      :offset-height 0
+     :offset-row 0
      :start-time 0
      :end-time 60000
      :started false
      :finished false
-     :time-left 60})
+     :time-left 60}))
 
 (defn clear-input [input-field] (set! (.-value input-field) ""))
 
@@ -171,13 +188,22 @@
       [:target-words] assoc (:current-word @state) new-target)))
 
 (defn current-word-height [state]
-  (.-height (.getBoundingClientRect (current-word-html state))))
+  (try
+    (.-height (.getBoundingClientRect (current-word-html state)))
+    (catch :default e
+      0)))
 
 (defn get-current-word-tag-top [state]
-  (.-top (.getBoundingClientRect (current-word-html state))))
+  (try
+    (.-top (.getBoundingClientRect (current-word-html state)))
+    (catch :default e
+      0)))
 
 (defn get-current-word-parent-tag-top [state]
-  (.-top (.getBoundingClientRect (.-parentElement (current-word-html state)))))
+  (try
+    (.-top (.getBoundingClientRect (.-parentElement (.-parentElement (current-word-html state)))))
+    (catch :default e
+      0)))
 
 (defn current-word-top [state]
   (- (get-current-word-tag-top state) (get-current-word-parent-tag-top state)))
@@ -186,7 +212,8 @@
   (swap! state update-in [:current-word] inc)
   (if (> (- (current-word-top state) (- (:offset-height @state)))
          (* 1.05 (current-word-height state)))
-    (swap! state update-in [:offset-height] - (current-word-height state))))
+    #_(swap! state update-in [:offset-height] - (current-word-height state))
+    (swap! state update-in [:offset-row] inc)))
 
 (defn save-word [input state]
   (let [word-exists (not (clojure.string/blank? (.-value (:target input))))]
@@ -287,42 +314,53 @@
     (if is-f5 (reset-game! state (.-target e)))
     (if (or is-f5 is-enter) (.preventDefault e))))
 
+(defn get-input-field-html []
+  (js/document.getElementById "typing-test-input"))
+
 (defn indexed-span [i word state]
   ^{:key i}
-  [:span {:data-word-id i
+  [:span {:data-word-id (:id word)
           :class (str
                    "target-word" \space
-                   (if (= i (:current-word @state)) "current") \space
-                   (:correctness ((:target-words @state) i)))}
+                   (if (= (:id word) (:current-word @state)) "current") \space
+                   (:correctness ((:target-words @state) (:id word))))}
     (:word word)])
 
 (defn word-view [target state]
   (map-indexed (fn [i word] (indexed-span i word state)) target))
+
+(defn row->div [i row state]
+  ^{:key i}
+  [:div {:style {:clear "both"}}
+    (doall (word-view row state))])
 
 (defn typing-run-view [state]
   [:div {:id "target-word-view"
          :class (if (:finished @state) "game-over" "")}
     [:div {:id "target-words"
            :style {:top (:offset-height @state)}}
-      (doall (word-view (take 150 (:target-words @state)) state))]])
+      (let [word-rows (take 3 (drop (:offset-row @state) (:target-words-rows @state)))
+            words (mapcat identity word-rows)]
+        #_(js/console.log (count words))
+        #_(doall (word-view words state))
+        (doall (map-indexed (fn [i row] (row->div i row state)) word-rows)))]])
 
 (defn typing-run-input []
   [:form {:style {:width "600px" :float "left"}}
-    [:input {:id "typing-test-input"
-             :type "text"
-             :onKeyDown (fn [e] (keydown-func e state))
-             :onKeyPress (fn [e] (keypress-func e state))
-             :autoFocus "autoFocus"
-             :spellCheck "false"
-             :autoCapitalize "off"
-             :autoCorrect "off"
-             :autoComplete "off"
-             :style {
-               :width "100%"
-               :height "30px"
-               :font-size "24"
-               :padding-left "4px"
-               :border-radius "4px"}}]])
+    [:input#typing-test-input {:type "text"
+                               :onKeyDown (fn [e] (keydown-func e state))
+                               :onKeyPress (fn [e] (keypress-func e state))
+                               :autoFocus "autoFocus"
+                               :spellCheck "false"
+                               :autoCapitalize "off"
+                               :autoCorrect "off"
+                               :autoComplete "off"
+                               :style {
+                                 :width "100%"
+                                 :height "30px"
+                                 :font-size "24"
+                                 :padding-left "4px"
+                                 :border-radius "4px"}}]])
 
 (defn word->wpm [i word]
   (let [count (count (:times word))
@@ -353,12 +391,13 @@
     ;; :else (:time-left @state)))
 
 (defn typing-run-timer [state]
-  (let [timer (game-timer state)]
-    [:span {:id "game-timer"}
-      (cond
-        (= 60 timer) "1:00"
-        (< 9 timer 60) (str "0:" timer)
-        :else (str "0:0" timer))]))
+  [:div {:style {:float "left"}}
+    (let [timer (game-timer state)]
+      [:span {:id "game-timer"}
+        (cond
+          (= 60 timer) "1:00"
+          (< 9 timer 60) (str "0:" timer)
+          :else (str "0:0" timer))])])
 
 (defn word->wordlets-with-times [w]
   ;{:word "there " :times [45 63 96 58 111]} ->
@@ -415,10 +454,20 @@
     [:div {:id "games-analysis-wordlets"}
       [:table
         [:tbody
-          [:tr [:th "Wordlet"] [:th "Average ms"] [:th "Timings"]
+          [:tr
+            [:th "Wordlet"]
+            [:th {:style {:font-size "70"}} "wpm ratio"]
+            [:th "equivalent wpm"]
+            [:th "average ms"]
+            [:th "Timings"]
           (for [[[wordlet average timings] key] (sorted-wordlets (mapcat identity @history))]
             ^{:key key}
-            [:tr [:td wordlet] [:td average] [:td (str timings)]])]]]]]))
+            [:tr
+              [:td wordlet]
+              [:td (.toFixed (/ (/ 12000 average) total-words-wpm) 2) ]
+              [:td (int (/ 12000 average))]
+              [:td average]
+              [:td (str timings)]])]]]]]))
 
 (defn test-page []
   [:div {:style {:width "800px"}}
@@ -433,6 +482,9 @@
       (typing-run-view state)
       (typing-run-input)
       [typing-run-timer state]
+      [:div {:style {:float "left" :padding-left "10px"}
+             :onClick (fn [e] (reset-game! state (get-input-field-html)))}
+        "reset"]
       (if (:finished @state) (stats state) )]])
 
 (defn current-page []

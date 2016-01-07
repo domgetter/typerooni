@@ -4,8 +4,8 @@
 
 (enable-console-print!)
 
-(figwheel/watch-and-reload
-  :websocket-url "ws://192.168.1.101:3449/figwheel-ws"
+#_(figwheel/watch-and-reload
+  :websocket-url "ws://192.168.1.104:3449/figwheel-ws"
   :jsload-callback core/mount-root)
 
 (core/init!)
