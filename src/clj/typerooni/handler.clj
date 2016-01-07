@@ -7,7 +7,8 @@
             [environ.core :refer [env]]))
 
 (def mount-target
-  [:div#app
+  [:div#app "One moment..."]
+  #_[:div#app
       [:h3 "ClojureScript has not been compiled!"]
       [:p "please run "
        [:b "lein figwheel"]

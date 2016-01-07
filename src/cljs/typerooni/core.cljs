@@ -115,11 +115,14 @@
 
 (defonce history (atom []))
 
+(defn history-json []
+  (clj->js @history))
+
 (defn initial-game-state []
-  (let [target-words (n-random-words 200 words-10ff)
+  (let [target-words (n-random-words 500 words-10ff)
         target-words-rows (words->rows target-words)]
     {:target-words target-words
-     :target-words-rows target-words-rows
+     :target-words-rows target-words-rows ; needs to be recalculated if the target words view changes width
      :words-typed []
      :current-word-timestamps []
      :current-word-backspace-used false
@@ -338,7 +341,7 @@
            :style {:top (:offset-height @state)}}
       (let [word-rows (take 3 (drop (:offset-row @state) (:target-words-rows @state)))
             words (mapcat identity word-rows)]
-        (js/console.log (count words))
+        #_(js/console.log (count words))
         #_(doall (word-view words state))
         (doall (map-indexed (fn [i row] (row->div i row state)) word-rows)))]])
 
