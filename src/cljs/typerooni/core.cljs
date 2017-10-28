@@ -301,7 +301,7 @@
       (if game-has-not-started (start-game! state))
       (if game-has-ended (end-game! state))
       (if game-is-over-and-new-word (clear-input (:target input)))
-      (if (and (not (:finised @state)) (:running @state))
+      (if (and (not (:finished @state)) (:running @state))
         (go (>! keypress-input [input state])))))
 
 (defn keydown-func [e state]
